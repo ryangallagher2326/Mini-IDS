@@ -51,12 +51,12 @@ def init_db():
         CREATE TABLE IF NOT EXISTS alerts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ts_first TEXT NOT NULL,
-            ts_last TEXT NOT NULL
+            ts_last TEXT NOT NULL,
             alert_type TEXT NOT NULL,
-            severity TEXT NOT NULL
+            severity TEXT NOT NULL,
             src_ip TEXT,
             username TEXT,
-            count INTEGER NOT NULL,
+            event_count INTEGER NOT NULL,
             evidence TEXT
             )
         """)
@@ -82,21 +82,21 @@ def parse_windows_security_xml(xml_path: str) -> list[Event]:              #pars
     #e:Event means "elements named Event that belong to the namespace mapped to e"
     #namepacse=ns tells Python what e is
     #In summary, goes through all the events that belong to the specified namespace
-    for ev in root.findall(".//e:Event", namespace=ns):
+    for ev in root.findall(".//e:Event", namespaces=ns):
 
 
         #findtext() searches for the first matching element and returns the text inside it or None if not found
         #".//e:System/e:EventID" specifies the <EventID> tag
         #every tag is internally treated like {namespace}tagname, so every time we specify a tagname we need to include the namespace
         #so this finds the text of the <EventID> tag inside the <System> tag in the <Event> tag we are currently inside
-        event_id_text = ev.findtext(".//e:System/e:EventID", namespace=ns)          
+        event_id_text = ev.findtext(".//e:System/e:EventID", namespaces=ns)          
         if not event_id_text:
             continue
         event_id = int(event_id_text)                       #convert event_id_text into an int
 
 
         #ev.find() returns the XML element object itself, so then we can read its attributes
-        time_node = ev.find(".//e:System/e:TimeCreated", namespace=ns)
+        time_node = ev.find(".//e:System/e:TimeCreated", namespaces=ns)
         if time_node is None:
             continue
         ts_str = time_node.get("SystemTime")      #The TimeCreated XML element we have stored in time_node, has a SystemTime attribute. time_node.get() returns the value of this
@@ -107,7 +107,7 @@ def parse_windows_security_xml(xml_path: str) -> list[Event]:              #pars
 
 
         data_map = {}
-        for d in ev.findall(".//e:EventData/e:Data", namespace=ns):                  #goes through all the Data elements inside the EventData element
+        for d in ev.findall(".//e:EventData/e:Data", namespaces=ns):                  #goes through all the Data elements inside the EventData element
             name = d.get("Name")                #The data elements have a Name attribute
 
 
@@ -131,7 +131,7 @@ def parse_windows_security_xml(xml_path: str) -> list[Event]:              #pars
 
             src_ip = data_map.get("IpAddress") or data_map.get("WorkstationName")
             lt = data_map.get("LogonType")
-            if lt and lt.isDigit():
+            if lt and lt.isdigit():
                 logon_type = int(lt)
 
             outcome = "success" if event_id == 4624 else "fail"
@@ -159,8 +159,8 @@ def store_events(events: list[Event]):                     #puts all the events 
             "INSERT INTO events (ts, event_id, username, src_ip, logon_type, outcome) VALUES (?,?,?,?,?,?)",
             (e.ts.isoformat(), e.event_id, e.username, e.src_ip, e.logon_type, e.outcome),
             )
-        conn.commit()
-        conn.close()
+    conn.commit()
+    conn.close()
 
 
 
@@ -171,7 +171,7 @@ def insert_alert(ts_first: datetime, ts_last: datetime, alert_type: str, severit
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    cur.execute("INSERT INTO alerts (ts_first, ts_last, alert_type, severity, src_ip, username, count, evidence) VALUES (?,?,?,?,?,?,?,?)", 
+    cur.execute("INSERT INTO alerts (ts_first, ts_last, alert_type, severity, src_ip, username, event_count, evidence) VALUES (?,?,?,?,?,?,?,?)", 
                 (ts_first.isoformat(), ts_last.isoformat(), alert_type, severity, src_ip, username, count, evidence))
 
     conn.commit()
